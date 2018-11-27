@@ -166,8 +166,6 @@ func DecodeHook(hook mapstructure.DecodeHookFunc) DecoderConfigOption {
 //		"endpoint": "https://localhost"
 //	}
 type Viper struct {
-	// Overwrite on merge
-	ForceOverride bool
 	// Delimiter that separates a list of keys
 	// used to access a nested value in one go
 	keyDelim string
@@ -1180,6 +1178,24 @@ func (v *Viper) SetDefault(key string, value interface{}) {
 	deepestMap[lastKey] = value
 }
 
+// set sets the value for the key in the override register.
+// set is case-insensitive for a key.
+// Will be used instead of values obtained via
+// flags, config file, ENV, default, or key/value store.
+func (v *Viper) set(m map[string]interface{}, key string, value interface{}) {
+	// If alias passed in, then set the proper override
+	key = v.realKey(strings.ToLower(key))
+	value = toCaseInsensitiveValue(value)
+
+	path := strings.Split(key, v.keyDelim)
+	lastKey := strings.ToLower(path[len(path)-1])
+	deepestMap := deepSearch(m, path[0:len(path)-1])
+
+	// set innermost value
+	deepestMap[lastKey] = value
+}
+
+
 // Set sets the value for the key in the override register.
 // Set is case-insensitive for a key.
 // Will be used instead of values obtained via
@@ -1187,15 +1203,13 @@ func (v *Viper) SetDefault(key string, value interface{}) {
 func Set(key string, value interface{}) { v.Set(key, value) }
 func (v *Viper) Set(key string, value interface{}) {
 	// If alias passed in, then set the proper override
-	key = v.realKey(strings.ToLower(key))
-	value = toCaseInsensitiveValue(value)
+	v.set(v.override, key, value)
+}
 
-	path := strings.Split(key, v.keyDelim)
-	lastKey := strings.ToLower(path[len(path)-1])
-	deepestMap := deepSearch(v.override, path[0:len(path)-1])
-
-	// set innermost value
-	deepestMap[lastKey] = value
+// SetConfig set config
+func (v *Viper) SetConfig(key string, value interface{}) {
+	// If alias passed in, then set the proper config
+	v.set(v.config, key, value)
 }
 
 // ReadInConfig will discover and load the configuration file from disk
@@ -1268,10 +1282,7 @@ func (v *Viper) MergeConfig(in io.Reader) error {
 	if err := v.unmarshalReader(in, cfg); err != nil {
 		return err
 	}
-	v.mergeMaps(cfg, v.config, nil)
-	if v.ForceOverride {
-		v.override = v.config
-	}
+	mergeMaps(cfg, v.config, nil)
 	return nil
 }
 
@@ -1505,7 +1516,7 @@ func castMapFlagToMapInterface(src map[string]FlagValue) map[string]interface{} 
 // instead of using a `string` as the key for nest structures beyond one level
 // deep. Both map types are supported as there is a go-yaml fork that uses
 // `map[string]interface{}` instead.
-func (v *Viper) mergeMaps(
+func mergeMaps(
 	src, tgt map[string]interface{}, itgt map[interface{}]interface{}) {
 	for sk, sv := range src {
 		tk := keyExists(sk, tgt)
@@ -1546,10 +1557,10 @@ func (v *Viper) mergeMaps(
 			tsv := sv.(map[interface{}]interface{})
 			ssv := castToMapStringInterface(tsv)
 			stv := castToMapStringInterface(ttv)
-			v.mergeMaps(ssv, stv, ttv)
+			mergeMaps(ssv, stv, ttv)
 		case map[string]interface{}:
 			jww.TRACE.Printf("merging maps")
-			v.mergeMaps(sv.(map[string]interface{}), ttv, nil)
+			mergeMaps(sv.(map[string]interface{}), ttv, nil)
 		default:
 			jww.TRACE.Printf("setting value")
 			tgt[tk] = sv
