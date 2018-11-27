@@ -166,6 +166,8 @@ func DecodeHook(hook mapstructure.DecodeHookFunc) DecoderConfigOption {
 //		"endpoint": "https://localhost"
 //	}
 type Viper struct {
+	// Overwrite on merge
+	OverwriteOnMerge bool
 	// Delimiter that separates a list of keys
 	// used to access a nested value in one go
 	keyDelim string
@@ -1266,7 +1268,10 @@ func (v *Viper) MergeConfig(in io.Reader) error {
 	if err := v.unmarshalReader(in, cfg); err != nil {
 		return err
 	}
-	mergeMaps(cfg, v.config, nil)
+	v.mergeMaps(cfg, v.config, nil)
+	if v.OverwriteOnMerge {
+		v.override = v.config
+	}
 	return nil
 }
 
@@ -1500,7 +1505,7 @@ func castMapFlagToMapInterface(src map[string]FlagValue) map[string]interface{} 
 // instead of using a `string` as the key for nest structures beyond one level
 // deep. Both map types are supported as there is a go-yaml fork that uses
 // `map[string]interface{}` instead.
-func mergeMaps(
+func (v *Viper) mergeMaps(
 	src, tgt map[string]interface{}, itgt map[interface{}]interface{}) {
 	for sk, sv := range src {
 		tk := keyExists(sk, tgt)
@@ -1541,10 +1546,10 @@ func mergeMaps(
 			tsv := sv.(map[interface{}]interface{})
 			ssv := castToMapStringInterface(tsv)
 			stv := castToMapStringInterface(ttv)
-			mergeMaps(ssv, stv, ttv)
+			v.mergeMaps(ssv, stv, ttv)
 		case map[string]interface{}:
 			jww.TRACE.Printf("merging maps")
-			mergeMaps(sv.(map[string]interface{}), ttv, nil)
+			v.mergeMaps(sv.(map[string]interface{}), ttv, nil)
 		default:
 			jww.TRACE.Printf("setting value")
 			tgt[tk] = sv
