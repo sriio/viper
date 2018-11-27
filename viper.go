@@ -167,7 +167,7 @@ func DecodeHook(hook mapstructure.DecodeHookFunc) DecoderConfigOption {
 //	}
 type Viper struct {
 	// Overwrite on merge
-	OverwriteOnMerge bool
+	ForceOverride bool
 	// Delimiter that separates a list of keys
 	// used to access a nested value in one go
 	keyDelim string
@@ -1269,7 +1269,7 @@ func (v *Viper) MergeConfig(in io.Reader) error {
 		return err
 	}
 	v.mergeMaps(cfg, v.config, nil)
-	if v.OverwriteOnMerge {
+	if v.ForceOverride {
 		v.override = v.config
 	}
 	return nil
